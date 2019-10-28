@@ -49,7 +49,8 @@ else
     apt-get remove python3-pip --assume-yes
 
     ## the camera and network are enabled when the machine boots for the first time
-mysql -e "CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
+    systemctl enable mariadb
+    mysql -e "CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
 # CREATE DATABASE co2_sensors;
 # GRANT ALL PRIVILEGES ON co2_sensors.* TO 'co2_logger'@'localhost';
 # FLUSH PRIVILEGES;
@@ -61,7 +62,12 @@ mysql -e "CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
     pip install -e co2_data_logger
 
     cd -
-    co2_logger_daemon.sh --enable-service
-    rm -rf pitally
+    sh co2_logger_daemon.sh --enable-service
+#    rm -rf pitally
     exit
+
+    #todo
+    #* set wifi
+    #* edit /etc/co2_data_logger.conf
+
 fi

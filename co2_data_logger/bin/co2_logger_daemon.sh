@@ -16,10 +16,8 @@ Restart=always
 [Install]
 WantedBy=multi-user.target" > /etc/systemd/system/co2_logger.service
     systemctl daemon-reload
-    systemctl enable pitally.service
-    systemctl enable pitally_backup.service
-    systemctl restart pitally.service
-    systemctl restart pitally_backup.service
+    systemctl enable co2_logger.service
+    systemctl restart co2_logger.service
     echo "restarting pitally services"
 else
     python3 co2_logger_daemon.py
