@@ -1,20 +1,61 @@
 import datetime
 import mysql.connector
 import logging
-import time
 import numpy as np
-from .remote_credentials import remote_credentials
+import serial
+import glob
+import sys
 
 N_SENSORS = 5
-PUSH_PERIOD = 5#s, how often to aggredate and publish data on local mysql
-
 
 class SerialDataFetcher(object):
-    def __init__(self):
+    def __init__(self, sensor_lut, baud):
+        self._sensor_lut = sensor_lut
         self._data = list()
+        self._port = None
+        self._serial_port = self._serial_ports(baud)
+
+    def _serial_ports(self, baud):
+        if sys.platform.startswith('win'):
+            ports = ['COM' + str(i + 1) for i in range(256)]
+
+        elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+            # this is to exclude your current terminal "/dev/tty"
+            ports = glob.glob('/dev/tty[A-Za-z]*')
+
+        elif sys.platform.startswith('darwin'):
+            ports = glob.glob('/dev/tty.*')
+
+        else:
+            raise EnvironmentError('Unsupported platform')
+
+        result = []
+        for port in ports:
+            try:
+                s = serial.Serial(port)
+                s.close()
+                result.append(port)
+            except (OSError, serial.SerialException):
+                pass
+        if len(ports) == 0:
+            raise Exception("No serial port found. "
+                            "Ensure your device is plugged.")
+        elif len(ports) > 2:
+            logging.warning("%i serial ports found:\n %s" % (len(ports), "\n\t".join(ports)))
+
+        return  serial.Serial(ports[0], baud, timeout=2)
+
     def fetch(self):
-        mock_data = np.random.rand(N_SENSORS)*1000.0 + 430
-        self._data.append(mock_data)
+
+        line = self._serial_port.readline()
+        if not line:
+            return
+        line = line.rstrip()
+        values = [float(v) for v in line.split(b',') if v]
+        if len(values) != N_SENSORS:
+            Exception("Wrong number of values for the number of sensors")
+        # mock_data = np.random.rand(N_SENSORS)*1000.0 + 430
+        self._data.append(values)
         #self._data.append([None, time.time(), ])
     def aggregate(self, t):
         data = np.array(self._data)
@@ -27,14 +68,20 @@ class SerialDataFetcher(object):
         return out
 
 
+class DummySerialDataFetcher(SerialDataFetcher):
+    def _serial_ports(self, baud):
+        return None
+    def fetch(self):
+        values = np.random.rand(N_SENSORS)*1000.0 + 430
+        self._data.append(values)
+
 class LocalDatabaseConnector(object):
-    _db_host = "localhost"
     _fields = ["id INT  NOT NULL AUTO_INCREMENT PRIMARY KEY",
                "T DATETIME",
                "SENSOR TINYINT",
                "PPM_10X SMALLINT UNSIGNED"]
+
     def __init__(self, db_credentials, table_name):
-        db_credentials["host"] = self._db_host
         self._db = mysql.connector.connect(**db_credentials)
         self._table_name = table_name
         command =  "CREATE TABLE IF NOT EXISTS %s (%s) KEY_BLOCK_SIZE=16;" % (table_name, ", ".join(self._fields))
@@ -51,7 +98,6 @@ class LocalDatabaseConnector(object):
         self._db.commit()
 
 class RemoteDbMirror(LocalDatabaseConnector):
-    _db_host = "remotemysql.com"
 
     def mirror(self, local_db):
         remote_c = self._db.cursor()
@@ -84,7 +130,6 @@ class RemoteDbMirror(LocalDatabaseConnector):
 
         to_insert = []
         i = 0
-
         for lc in src_c:
             i += 1
             tp = tuple([str(v) for v in lc])
@@ -103,43 +148,6 @@ class RemoteDbMirror(LocalDatabaseConnector):
             self._db.commit()  # update remote
 
 
-# 1 ret
-# 1 retreive last index on remote for current local table
-# 2 send all new data
-# 3 list all tables on remote
-# get all non current tables last index
-# get new data for each
-
-
-if __name__ == "__main__":
-
-    local_credential = {"database": "co2_sensors",
-                   "user": "co2_logger",
-                   "password": "co2_logger",
-                   }
-
-    TABLE_NAME = "pi_000002"
-    local_db_con = LocalDatabaseConnector(local_credential, TABLE_NAME)
-    sf = SerialDataFetcher()
-    start = time.time()
-    last_push = start
-    while True:
-        now = time.time()
-        sf.fetch()
-        time.sleep(1)
-        if now - last_push >= PUSH_PERIOD:
-            aggregate = sf.aggregate(now)
-            last_push = now
-            local_db_con.write_line(aggregate)
-            try:
-                remote_db = RemoteDbMirror(remote_credentials, TABLE_NAME)
-                remote_db.mirror(local_db_con)
-
-            except mysql.connector.errors.InterfaceError:
-                logging.warning("No connection to remote db")
-            except Exception as e:
-                logging.error("Unknown remote db error", e)
-                
 # mysql -p -h remotemysql.com -u rgDubOKpGu rgDubOKpGu
 # mysql -u root -p
 # CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';

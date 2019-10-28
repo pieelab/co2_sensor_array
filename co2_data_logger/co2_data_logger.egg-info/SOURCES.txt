@@ -1,0 +1,14 @@
+setup.py
+bin/__init__.py
+bin/co2_logger_daemon.py
+bin/co2_logger_daemon.sh
+co2_data_logger/__init__.py
+co2_data_logger/_version.py
+co2_data_logger/config.py
+co2_data_logger/utils.py
+co2_data_logger.egg-info/PKG-INFO
+co2_data_logger.egg-info/SOURCES.txt
+co2_data_logger.egg-info/dependency_links.txt
+co2_data_logger.egg-info/not-zip-safe
+co2_data_logger.egg-info/requires.txt
+co2_data_logger.egg-info/top_level.txt
