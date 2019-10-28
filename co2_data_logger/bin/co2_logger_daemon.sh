@@ -5,6 +5,7 @@ if [[ $* == *--enable-service* ]]
 then
 echo "[Unit]
 Description=Pitally server
+Wants=mysqld.service
 
 [Service]
 Type=simple
