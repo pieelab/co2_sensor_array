@@ -22,7 +22,7 @@ class SerialDataFetcher(object):
 
         elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
             # this is to exclude your current terminal "/dev/tty"
-            ports =  glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*') 
+            ports =  glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
 
         elif sys.platform.startswith('darwin'):
             ports = glob.glob('/dev/tty.*')
@@ -147,6 +147,9 @@ class RemoteDbMirror(LocalDatabaseConnector):
             logging.info("%s synced" % t)
 
     def _incremental_sync(self, src_c, dst_c, table_name):
+        command = "CREATE TABLE IF NOT EXISTS %s (%s) KEY_BLOCK_SIZE=16;" % (table_name, ", ".join(self._fields))
+        dst_c.execute(command)
+        
         try:
             dst_command = "SELECT MAX(id) FROM %s" % table_name
             dst_c.execute(dst_command)
