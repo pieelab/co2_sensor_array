@@ -57,10 +57,13 @@ class SerialDataFetcher(object):
         if len(values) != len(self._sensor_lut):
             logging.warning("wrong number of values %s" % str(values))
             return
+        filtered = []
         for v in values:
             if v < 300 or v > 5000:
-                logging.warning("Some values are not in expected range: %s" % str(values))
-                return
+                logging.warning("Some values are not in expected range: %s" % v)
+                filtered.append(np.NaN)
+            else:
+                filtered.append(v)
 
         self._data.append(values)
 
@@ -78,10 +81,11 @@ class SerialDataFetcher(object):
         logging.debug(data)
         out = []
         for sensor_id, sensor_value in enumerate(data):
-            row = [0, timestamp, self._sensor_lut[sensor_id], sensor_value]
-            logging.info("Row %i: %s" % (sensor_id, str(row)))
-            out.append(row)
-
+            if not np.isnan(sensor_value):
+                row = [0, timestamp, self._sensor_lut[sensor_id], sensor_value]
+                logging.info("Row %i: %s" % (sensor_id, str(row)))
+                out.append(row)
+            
         return out
 
 
