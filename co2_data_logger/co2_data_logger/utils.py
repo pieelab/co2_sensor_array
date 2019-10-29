@@ -50,7 +50,9 @@ class SerialDataFetcher(object):
     def fetch(self):
 
         line = self._serial_port.readline()
+        logging.debug("Fetching data from serial port")
         if not line:
+            logging.warning("Empty line from serial")
             return
         line = line.rstrip()
         values = [float(v) for v in line.split(b',') if v]
