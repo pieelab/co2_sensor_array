@@ -58,7 +58,7 @@ class SerialDataFetcher(object):
             logging.warning("wrong number of values %s" % str(values))
             return
         for v in values:
-            if not 300 > v > 5000:
+            if v < 300 or v > 5000:
                 logging.warning("Some values are not in expected range: %s" % str(values))
                 return
 
