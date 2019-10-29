@@ -31,7 +31,9 @@
 *.out
 *.app
 
-
+*.pyc
 *.zip
 *.img
 *.gz
+*.idea/
+*.dcf
