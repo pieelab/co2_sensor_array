@@ -57,6 +57,11 @@ class SerialDataFetcher(object):
         if len(values) != len(self._sensor_lut):
             logging.warning("wrong number of values %s" % str(values))
             return
+        for v in values:
+            if not 300 > v > 5000:
+                logging.warning("Some values are not in expected range: %s" % str(values))
+                return
+
         self._data.append(values)
 
     def aggregate(self, t):

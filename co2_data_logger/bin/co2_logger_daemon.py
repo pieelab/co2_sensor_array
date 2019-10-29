@@ -44,6 +44,7 @@ if __name__ == "__main__":
             if aggregate:
                 local_db_con.write_line(aggregate)
             try:
+                #todo this should be run first off at boot
                 remote_db = RemoteDbMirror(remote_credentials, device_info['name'])
                 remote_db.mirror(local_db_con)
 
