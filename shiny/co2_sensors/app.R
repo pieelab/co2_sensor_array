@@ -8,6 +8,8 @@ library(lubridate)
 library(plotly)
 library(RMariaDB)
 
+Sys.setenv(TZ='America/Vancouver')
+
 get_co2_data <- function(date_range){
     con <- DBI::dbConnect(RMariaDB::MariaDB(),
                           host = "remotemysql.com",
@@ -63,7 +65,12 @@ server <- function(input, output) {
     output$distPlot <- renderPlotly({
         # generate bins based on input$bins from ui.R
         dt <- get_co2_data(input$dates)
-        pl <- ggplot(dt, aes(T,CO2_ppm, colour=sensor_id)) + geom_line() +facet_grid(device_id ~ .) 
+        pl <- ggplot(dt, aes(T,CO2_ppm, colour=sensor_id)) +
+            geom_line() +
+            geom_point() +
+            facet_grid(device_id ~ .) +
+            scale_x_datetime(name="Datetime (PST/PDT)")
+
         ggplotly(pl)
     })
     output$dateText  <- renderText({

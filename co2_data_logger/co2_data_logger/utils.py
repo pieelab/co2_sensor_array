@@ -6,11 +6,11 @@ import serial
 import glob
 import sys
 
-N_SENSORS = 5
-
 class SerialDataFetcher(object):
-    def __init__(self, sensor_lut, baud):
+    def __init__(self, baud,  sensor_lut = (0,1,2,3,4)):
         self._sensor_lut = sensor_lut
+        if sensor_lut:
+            logging.debug("sensor LUT: %s" % str(sensor_lut))
         self._data = list()
         self._port = None
         self._serial_port = self._serial_ports(baud)
@@ -52,19 +52,27 @@ class SerialDataFetcher(object):
             return
         line = line.rstrip()
         values = [float(v) for v in line.split(b',') if v]
-        if len(values) != N_SENSORS:
-            Exception("Wrong number of values for the number of sensors")
-        # mock_data = np.random.rand(N_SENSORS)*1000.0 + 430
+        logging.info("Receiving %s" % str(values))
+
+        if len(values) != len(self._sensor_lut):
+            logging.warning("wrong number of values %s" % str(values))
+            return
         self._data.append(values)
-        #self._data.append([None, time.time(), ])
+
     def aggregate(self, t):
+        if len(self._data) < 3:
+            logging.warning("Less than 3 data point, not aggregrating")
+            return None
         data = np.array(self._data)
+        data = data * 10
         self._data = []
         timestamp = datetime.datetime.fromtimestamp(t).utcnow().strftime('%Y-%m-%d %H:%M:%S')
-        data = np.median(data, 0).tolist()
+
+        data = np.round(np.median(data, 0)).astype(np.int).tolist()
+        logging.debug(data)
         out = []
         for sensor_id, sensor_value in enumerate(data):
-           out.append([0, timestamp, sensor_id, sensor_value])
+           out.append([0, timestamp, self._sensor_lut[sensor_id], sensor_value])
         return out
 
 
@@ -134,7 +142,7 @@ class RemoteDbMirror(LocalDatabaseConnector):
             i += 1
             tp = tuple([str(v) for v in lc])
             to_insert.append(str(tp))
-            if len(to_insert) > 100: # fixme number of rws to send at the same time
+            if len(to_insert) > 100: # fixme number of rows to send at the same time
                 value_string = ",".join(to_insert)
                 dst_command = "INSERT INTO %s VALUES %s" % (table_name, value_string)
                 dst_c.execute(dst_command)

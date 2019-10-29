@@ -4,7 +4,7 @@
 if [[ $* == *--enable-service* ]]
 then
 echo "[Unit]
-Description=Pitally server
+Description=CO2 Logger
 Wants=mysqld.service
 
 [Service]
@@ -18,9 +18,9 @@ WantedBy=multi-user.target" > /etc/systemd/system/co2_logger.service
     systemctl daemon-reload
     systemctl enable co2_logger.service
     systemctl restart co2_logger.service
-    echo "restarting pitally services"
+    echo "restarting services"
 else
-    python3 co2_logger_daemon.py
+    co2_logger_daemon.py
 fi
 
 

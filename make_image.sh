@@ -62,7 +62,7 @@ else
     pip install -e co2_data_logger
 
     cd -
-    sh co2_logger_daemon.sh --enable-service
+    co2_logger_daemon.sh --enable-service
 #    rm -rf pitally
     exit
 
