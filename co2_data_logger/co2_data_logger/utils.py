@@ -63,6 +63,7 @@ class SerialDataFetcher(object):
         if len(self._data) < 3:
             logging.warning("Less than 3 data point, not aggregrating")
             return None
+        logging.info("Aggregating %i data points" % len(self._data))
         data = np.array(self._data)
         data = data * 10
         self._data = []
@@ -72,7 +73,10 @@ class SerialDataFetcher(object):
         logging.debug(data)
         out = []
         for sensor_id, sensor_value in enumerate(data):
-           out.append([0, timestamp, self._sensor_lut[sensor_id], sensor_value])
+            row = [0, timestamp, self._sensor_lut[sensor_id], sensor_value]
+            logging.info("Row %i: %s" % (sensor_id, str(row)))
+            out.append(row)
+
         return out
 
 
@@ -93,15 +97,18 @@ class LocalDatabaseConnector(object):
         self._db = mysql.connector.connect(**db_credentials)
         self._table_name = table_name
         command =  "CREATE TABLE IF NOT EXISTS %s (%s) KEY_BLOCK_SIZE=16;" % (table_name, ", ".join(self._fields))
+        logging.info("%s on %s" % (command, self.__class__.__name__))
         c = self._db.cursor()
         c.execute(command)
     @property
     def db(self):
         return self._db
     def write_line(self, value_list):
+
         c = self._db.cursor()
         for v in value_list:
             command = "INSERT INTO %s VALUES %s" % (self._table_name, str(tuple(v)))
+            logging.info("writing to local DB. Command: %s" % command)
             c.execute(command)
         self._db.commit()
 
@@ -110,6 +117,8 @@ class RemoteDbMirror(LocalDatabaseConnector):
     def mirror(self, local_db):
         remote_c = self._db.cursor()
         local_c = local_db.db.cursor()
+
+        logging.info("Syncing local table %s to remote" % self._table_name)
         self._incremental_sync(local_c, remote_c, self._table_name)
         remote_c.execute("SHOW TABLES;")
         tables_to_sync_from_remote = []
@@ -117,8 +126,12 @@ class RemoteDbMirror(LocalDatabaseConnector):
             table = c[0].decode()
             if table != self._table_name:
                 tables_to_sync_from_remote.append(table)
+        logging.info("Target tables to sync from remote: %s" % str(tables_to_sync_from_remote))
+
         for t in tables_to_sync_from_remote:
+            logging.info("Syncing table %s" % t)
             self._incremental_sync(remote_c, local_c, t)
+            logging.info("%s synced" % t)
 
     def _incremental_sync(self, src_c, dst_c, table_name):
         try:
