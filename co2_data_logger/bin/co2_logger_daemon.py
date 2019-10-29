@@ -32,7 +32,9 @@ if __name__ == "__main__":
     sensor_lut = tuple(int(i) for i in device_info['sensor_lut'].split(','))
 
     sf = FetcherClass(int(device_info['baud']), sensor_lut)
+
     start = time.time()
+    logging.debug("Starting at %i" % int(start))
     last_push = start
     while True:
         now = time.time()

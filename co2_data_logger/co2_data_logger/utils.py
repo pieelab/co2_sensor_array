@@ -16,6 +16,7 @@ class SerialDataFetcher(object):
         self._serial_port = self._serial_ports(baud)
 
     def _serial_ports(self, baud):
+        logging.debug("scanning ports")
         if sys.platform.startswith('win'):
             ports = ['COM' + str(i + 1) for i in range(256)]
 
@@ -31,6 +32,7 @@ class SerialDataFetcher(object):
 
         result = []
         for port in ports:
+            logging.debug(port)
             try:
                 s = serial.Serial(port)
                 s.close()
@@ -85,7 +87,7 @@ class SerialDataFetcher(object):
                 row = [0, timestamp, self._sensor_lut[sensor_id], sensor_value]
                 logging.info("Row %i: %s" % (sensor_id, str(row)))
                 out.append(row)
-            
+
         return out
 
 
@@ -176,11 +178,3 @@ class RemoteDbMirror(LocalDatabaseConnector):
             dst_command = "INSERT INTO %s VALUES %s" % (table_name, value_string)
             dst_c.execute(dst_command)
             self._db.commit()  # update remote
-
-
-# mysql -p -h remotemysql.com -u rgDubOKpGu rgDubOKpGu
-# mysql -u root -p
-# CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';
-# CREATE DATABASE co2_sensors;
-# GRANT ALL PRIVILEGES ON co2_sensors.* TO 'co2_logger'@'localhost';
-# FLUSH PRIVILEGES;
