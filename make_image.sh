@@ -106,20 +106,7 @@ fi
 
 
 
-nano /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-country=CA
-
-network={
-   ssid="eduroam"
-   scan_ssid=1
-   key_mgmt=WPA-EAP
-   eap=PEAP
-   identity=""
-   password=""
-   phase2="auth=MSCHAPV2"
-}
+cp wpa_supplicant-wlan0.conf /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 
 # eduroam does not work with the new wpa driver
 #sudo systemctl enable wpa_supplicant@.service
