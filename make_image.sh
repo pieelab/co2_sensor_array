@@ -60,11 +60,12 @@ else
     touch /boot/ssh
     apt-get update
     apt-get upgrade --assume-yes
-    apt-get install tree ipython3 libatlas-base-dev tcpdump nmap python3-pip iputils-ping  git lftp npm  mariadb-server --assume-yes
+    apt-get install tree ipython3 libatlas-base-dev tcpdump nmap python3-pip iputils-ping  git lftp npm  mariadb-server watchdog --assume-yes
     SKIP_WARNING=1 rpi-update
 
     pip3 install --upgrade pip
     apt-get remove python3-pip --assume-yes
+
 
     ###
     ## stack
@@ -75,6 +76,7 @@ else
     cd -
 
     cp co2_sensor_array/co2_data_logger.conf  /etc/co2_data_logger.conf
+    cp watchdog.conf  /etc/watchdog.conf # test internet
     nano /etc/co2_data_logger.conf
 
 

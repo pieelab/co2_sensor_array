@@ -27,7 +27,7 @@ else
     mysql -e "DROP DATABASE IF EXISTS test;"
     mysql -e "FLUSH PRIVILEGES;"
     mysql -e "CREATE DATABASE IF NOT EXISTS co2_sensors;"
-    mysql -e "CREATE USER IF NOT EXISTS 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
+      mysql -e "CREATE USER IF NOT EXISTS 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
     mysql -e "GRANT ALL PRIVILEGES ON co2_sensors.* TO 'co2_logger'@'localhost';"
     mysql -e "FLUSH PRIVILEGES;"
 
