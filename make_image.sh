@@ -5,8 +5,8 @@ ZIP_IMG=2019-09-26-raspbian-buster-lite.zip
 RASPBIAN_URL=https://downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2019-09-30/$ZIP_IMG
 
 
-ZIP_IMG=2019-07-10-raspbian-buster-lite.zip
-RASPBIAN_URL=http://director.downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2019-07-12/$ZIP_IMG
+#ZIP_IMG=2019-07-10-raspbian-buster-lite.zip
+#RASPBIAN_URL=http://director.downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2019-07-12/$ZIP_IMG
 
 
 OS_IMG_NAME=$(date "+%Y-%m-%d")_os_image.img
@@ -33,12 +33,12 @@ d
 2
 n
 p
-FIXME
+532480
 
-
+N
 w
 EOF
-    e2fsck ${DEV_LARGE}p2
+    e2fsck -f ${DEV_LARGE}p2
     resize2fs ${DEV_LARGE}p2
     mkdir -p $MOUNT_DIR
     mount ${DEV_LARGE}p2 $MOUNT_DIR
@@ -66,15 +66,6 @@ else
     pip3 install --upgrade pip
     apt-get remove python3-pip --assume-yes
 
-    ## the camera and network are enabled when the machine boots for the first time
-#    mysql_secure_installation # root -> root
-    systemctl enable mariadb
-#    systemctl start mariadb
-#    mysql -e "CREATE USER 'co2_logger'@'localhost' IDENTIFIED BY 'co2_logger';"
-#    mysql -e "CREATE DATABASE co2_sensors";
-#    mysql -e "GRANT ALL PRIVILEGES ON co2_sensors.* TO 'co2_logger'@'localhost'";
-#    mysql -e "FLUSH PRIVILEGES";
-
     ###
     ## stack
     git clone $GIT_REPO
@@ -82,12 +73,20 @@ else
     pip install -e co2_data_logger
 
     cd -
+
     cp co2_sensor_array/co2_data_logger.conf  /etc/co2_data_logger.conf
     nano /etc/co2_data_logger.conf
 
-    co2_logger_daemon.sh --enable-service
+
+    cp co2_sensor_array/wpa_supplicant-wlan0.conf /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+    nano /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+#    cat /etc/systemd/system/multi-user.target.wants/wpa_supplicant@wlan0.service | sed s/nl80211,//g > /tmp/wpa_supplicant@wlan0.service && mv /tmp/wpa_supplicant@wlan0.service /etc/systemd/system/multi-user.target.wants/wpa_supplicant@wlan0.service
+    cat /lib/systemd/system/wpa_supplicant@.service | sed s/nl80211,//g > /tmp/wpa_supplicant@wlan0.service && mv /tmp/wpa_supplicant@wlan0.service  /lib/systemd/system/wpa_supplicant@.service
+
     systemctl disable  wpa_supplicant
     systemctl enable  wpa_supplicant@wlan0.service
+
+    co2_logger_daemon.sh --enable-service
 
 #    rm -rf pitally
     exit
@@ -106,7 +105,6 @@ fi
 
 
 
-cp wpa_supplicant-wlan0.conf /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 
 # eduroam does not work with the new wpa driver
 #sudo systemctl enable wpa_supplicant@.service

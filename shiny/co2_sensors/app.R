@@ -8,7 +8,8 @@ library(lubridate)
 library(plotly)
 library(RMariaDB)
 
-Sys.setenv(TZ='America/Vancouver')
+tzone = 'America/Vancouver'
+Sys.setenv(TZ=tzone)
 
 date_ranger <-function(date_range){
     
@@ -48,18 +49,22 @@ ui <- fluidPage(
 
     # Application title
     titlePanel("CO2 Sensor Data"),
-    column(12, plotlyOutput("distPlot", height="600px")),
+    sidebarPanel(
+        dateRangeInput("dates", "Date range", start = Sys.Date() - 2, end = Sys.Date(), min = NULL,
+                       max = Sys.Date(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
+                       language = "en", separator = " to ", width = NULL)
+    ),
+   
+    mainPanel(
         
-    fluidRow(
-        column(2,
-               dateRangeInput("dates", "Date range", start = Sys.Date() - 2, end = Sys.Date(), min = NULL,
-                              max = Sys.Date(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
-                              language = "en", separator = " to ", width = NULL)
-        ),
-        column(10,
-               
-               tableOutput("table")
+        # Output: Tabset w/ plot, summary, and table ----
+        tabsetPanel(type = "tabs",
+                    tabPanel("Plot",plotlyOutput("distPlot", height="800px")),
+                    tabPanel("Summary",  tableOutput("table")),
+                    tabPanel("Warnings", verbatimTextOutput("TODO")),
+                    tabPanel("Download", downloadButton("downloadData", "Download"))
         )
+        
     )
     
     
@@ -76,18 +81,24 @@ server <- function(input, output) {
     
     output$distPlot <- renderPlotly({
         # generate bins based on input$bins from ui.R
-        theme_set(theme_bw() + theme(legend.position = 'top', panel.spacing = unit(0, "line")))
+        theme_set(theme_bw() + theme(legend.position = 'none', panel.spacing = unit(.1, "line")))
         
         d <- data_input()
-        pl <- ggplot(d$dt,  aes(T,CO2_ppm, colour=device_id)) +
+        pl <- ggplot(d$dt,  aes(T,CO2_ppm, colour= device_id)) +
+            geom_hline(yintercept=c(400, 700), linetype=c(2), colour="grey") +
             geom_line(colour="black", size=.5) +
             geom_point(size=1) +
-            facet_grid(sensor_id ~ .) +
+            facet_grid(sensor_id  ~ .) +
             scale_y_continuous(name="[CO2] (PPM)") +
-            scale_x_datetime(name="Datetime (PST/PDT)", limits = d$date_range)
-
-        ggplotly(pl) %>%
-        layout(legend = list(orientation = "h", x = 0.4, y = 1.1))
+            scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone) +
+            coord_cartesian(xlim = NULL, ylim = c(250,3000))
+        
+        
+        
+        
+        ggplotly(pl,dynamicTicks =TRUE ) %>%
+        rangeslider() %>%
+        layout(legend = list(orientation = "h", x = 0.4, y = 1.1), selectdirection='h')
     })
     output$dateText  <- renderText({
         paste("input$date is", as.character(input$dates))
@@ -100,12 +111,23 @@ server <- function(input, output) {
                 mean=mean(CO2_ppm),
                 sd=sd(CO2_ppm),
                 median=median(CO2_ppm),
-                last_point = as.character(T[.N]),
+                last_point = sprintf("%s ago", as.character(hms::round_hms(hms::as_hms(Sys.time() - T[.N]), 1))),
                 N=.N,
                 avg_sampling_period = mean(diff(T))
                 ),by="device_id,sensor_id"]
         
     })
+    output$downloadData <- downloadHandler(
+        filename = function() {
+            r <- data_input()$date_range
+            r <- stringr::str_replace_all(r, '\ |:', '-')
+            sprintf("co2_sensors_%s_%s.csv", r[1], r[2])
+        },
+        content = function(file) {
+            fwrite(data_input()$dt, file, row.names = FALSE)
+        }
+    )
+    
 }
 
 # Run the application 

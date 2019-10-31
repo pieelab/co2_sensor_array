@@ -15,10 +15,7 @@ Restart=always
 
 [Install]
 WantedBy=multi-user.target" > /etc/systemd/system/co2_logger.service
-    systemctl daemon-reload
     systemctl enable co2_logger.service
-    systemctl restart co2_logger.service
-    echo "restarting services"
 else
 
 
@@ -36,6 +33,3 @@ else
 
     co2_logger_daemon.py
 fi
-
-
-
