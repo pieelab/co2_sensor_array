@@ -8,8 +8,29 @@ library(lubridate)
 library(plotly)
 library(RMariaDB)
 
+library(R.utils)
+
 tzone = 'America/Vancouver'
 Sys.setenv(TZ=tzone)
+production_local_con <- function(){
+    con <- DBI::dbConnect(RMariaDB::MariaDB(),
+                          host = "localhost",
+                          user = "rshiny",
+                          password = "rshiny",
+                          dbname = "co2_sensors"
+    )
+}
+
+dev_con <- function(){
+    source('./.con_to_remote.R')
+    con <- DBI::dbConnect(RMariaDB::MariaDB(),
+                          host = host,
+                          user = "co2_reader",
+                          password = password,
+                          dbname = "co2_sensors"
+    )
+    
+}
 
 date_ranger <-function(date_range){
     
@@ -21,12 +42,11 @@ date_ranger <-function(date_range){
     return(select_datetime_range)
 }
 get_co2_data <- function(select_datetime_range){
-    con <- DBI::dbConnect(RMariaDB::MariaDB(),
-                          host = "remotemysql.com",
-                          user = "rgDubOKpGu",
-                          password = "qK7Ymofmms",
-                          dbname = "rgDubOKpGu"
-    )
+    if(System$getHostname()== 'linode')
+        con <- production_local_con()
+    else
+        con <- dev_con()
+    
     d1 <- select_datetime_range[1]
     d2 <- select_datetime_range[2]
     
@@ -52,9 +72,13 @@ ui <- fluidPage(
     sidebarPanel(
         dateRangeInput("dates", "Date range", start = Sys.Date() - 2, end = Sys.Date(), min = NULL,
                        max = Sys.Date(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
-                       language = "en", separator = " to ", width = NULL)
+                       language = "en", separator = " to ", width = NULL),
+        
+       h5(textOutput("last_updated"))
+        
     ),
-   
+    
+    
     mainPanel(
         
         # Output: Tabset w/ plot, summary, and table ----
@@ -71,14 +95,20 @@ ui <- fluidPage(
 )
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
-    
+server <- function(input, output, session) {
+    autoInvalidate <- reactiveTimer(60000, session)
     data_input <- reactive({
+        autoInvalidate()
+        print("updating data")
         date_range <- date_ranger(input$dates)
         dt <- get_co2_data(date_range)
-        list(dt=dt,date_range=date_range)
+        list(dt=dt,date_range=date_range, updated_time=with_tz(Sys.time(),tzone))
     })
-    
+    output$last_updated <- renderText({
+        d <- data_input()
+        sprintf("Last update: %s", 
+                as.character(d$updated_time))
+    })
     output$distPlot <- renderPlotly({
         # generate bins based on input$bins from ui.R
         theme_set(theme_bw() + theme(legend.position = 'none', panel.spacing = unit(.1, "line")))
@@ -97,7 +127,7 @@ server <- function(input, output) {
         
         
         ggplotly(pl,dynamicTicks =TRUE ) %>%
-        rangeslider() %>%
+        # rangeslider() %>%
         layout(legend = list(orientation = "h", x = 0.4, y = 1.1), selectdirection='h')
     })
     output$dateText  <- renderText({

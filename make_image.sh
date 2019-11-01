@@ -75,8 +75,10 @@ else
 
     cd -
 
-    cp co2_sensor_array/co2_data_logger.conf  /etc/co2_data_logger.conf
     cp watchdog.conf  /etc/watchdog.conf # test internet
+    systemctl enable watchdog
+
+    cp co2_sensor_array/co2_data_logger.conf  /etc/co2_data_logger.conf
     nano /etc/co2_data_logger.conf
 
 
@@ -116,4 +118,5 @@ fi
 
 #to clone: dd if=/dev/sda   bs=64K conv=noerror,sync status=progress | gzip -c  > ./2019-10-29_pi_clone.img.gz
 # to restore: gunzip -c ./2019-10-29_pi_clone.img.gz | dd of=/dev/sda bs=64K conv=noerror,sync status=progress
+
 
