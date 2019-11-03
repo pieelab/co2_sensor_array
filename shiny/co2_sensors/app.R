@@ -10,8 +10,12 @@ library(RMariaDB)
 
 library(R.utils)
 
+
 tzone = 'America/Vancouver'
 Sys.setenv(TZ=tzone)
+
+ranges_dt <- fread("ranges.csv") 
+
 production_local_con <- function(){
     con <- DBI::dbConnect(RMariaDB::MariaDB(),
                           host = "localhost",
@@ -56,10 +60,13 @@ get_co2_data <- function(select_datetime_range){
         out <- as.data.table(tb)
         out[,device_id := name]
         out[,CO2_ppm := PPM_10X/10]
-        out[,sensor_id := as.factor(SENSOR)]
+        out[,sensor_id := as.numeric(SENSOR)]
         
     }
     dt <- rbindlist(lapply(tables, select_tables, con=con))
+    
+    dt <- ranges_dt[dt, on='sensor_id']
+    dt[, in_range := between(CO2_ppm,min,max), by=sensor_id]
     DBI::dbDisconnect(con) 
     dt 
 }
@@ -68,14 +75,13 @@ get_co2_data <- function(select_datetime_range){
 ui <- fluidPage(
 
     # Application title
-    titlePanel("CO2 Sensor Data"),
+    titlePanel("CO2 sensors"),
     sidebarPanel(
         dateRangeInput("dates", "Date range", start = Sys.Date() - 2, end = Sys.Date(), min = NULL,
                        max = Sys.Date(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
                        language = "en", separator = " to ", width = NULL),
         
-       h5(textOutput("last_updated"))
-        
+       h4(htmlOutput( "last_updated"))
     ),
     
     
@@ -106,27 +112,35 @@ server <- function(input, output, session) {
     })
     output$last_updated <- renderText({
         d <- data_input()
-        sprintf("Last update: %s", 
+        HTML(
+            sprintf("<b>Plot updated at %s</b>", 
                 as.character(d$updated_time))
+        )
     })
     output$distPlot <- renderPlotly({
         # generate bins based on input$bins from ui.R
         theme_set(theme_bw() + theme(legend.position = 'none', panel.spacing = unit(.1, "line")))
         
         d <- data_input()
-        pl <- ggplot(d$dt,  aes(T,CO2_ppm, colour= device_id)) +
-            geom_hline(yintercept=c(400, 700), linetype=c(2), colour="grey") +
+        device_sensor_map <- unique(d$dt, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id")]
+        device_sensor_map[, `:=`(x=d$date_range[1],y=900, CO2_ppm=0)]
+        pl <- ggplot(d$dt,  aes(T,CO2_ppm)) +
+            geom_text(data=device_sensor_map, aes(label=device_id, x=x,y=y),colour="blue")+
+            geom_hline(data=ranges_dt, mapping = aes(yintercept=set), colour="grey", linetype=2)+
             geom_line(colour="black", size=.5) +
-            geom_point(size=1) +
+            geom_point(mapping=aes(colour=in_range), size=1) +
             facet_grid(sensor_id  ~ .) +
             scale_y_continuous(name="[CO2] (PPM)") +
-            scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone) +
-            coord_cartesian(xlim = NULL, ylim = c(250,3000))
+            scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone, 
+                             breaks = scales::pretty_breaks(n = 12)) +
+            coord_cartesian(xlim = NULL, ylim = c(250,1000))+
+            scale_colour_manual(values = c("red", "black")) +
+            theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
         
         
         
-        
-        ggplotly(pl,dynamicTicks =TRUE ) %>%
+        ggplotly(pl,dynamicTicks =FALSE ) %>%
         # rangeslider() %>%
         layout(legend = list(orientation = "h", x = 0.4, y = 1.1), selectdirection='h')
     })
