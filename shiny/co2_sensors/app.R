@@ -5,11 +5,11 @@ library(dplyr)
 library(data.table)
 library(ggplot2)
 library(lubridate)
-library(plotly)
+# library(plotly)
 library(RMariaDB)
-
+library(Cairo)
 library(R.utils)
-
+library(shinyWidgets)
 
 tzone = 'America/Vancouver'
 Sys.setenv(TZ=tzone)
@@ -73,7 +73,7 @@ get_co2_data <- function(select_datetime_range){
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-
+    setBackgroundColor("ghostwhite"),
     # Application title
     titlePanel("CO2 sensors"),
     sidebarPanel(
@@ -89,7 +89,19 @@ ui <- fluidPage(
         
         # Output: Tabset w/ plot, summary, and table ----
         tabsetPanel(type = "tabs",
-                    tabPanel("Plot",plotlyOutput("distPlot", height="800px")),
+                    tabPanel("Plot",
+                             
+                            plotOutput("zoom_view", 
+                                               height="600px",
+                                               width='800px', ),
+                            plotOutput("overall_view", 
+                                       height="100px",
+                                       width='800px',
+                                       dblclick = "overview_dblclick",
+                                       brush = brushOpts(
+                                           id = "overview_brush",
+                                           resetOnNew = FALSE, direction='x'))
+                            ),
                     tabPanel("Summary",  tableOutput("table")),
                     tabPanel("Warnings", verbatimTextOutput("TODO")),
                     tabPanel("Download", downloadButton("downloadData", "Download"))
@@ -102,12 +114,16 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
+    range_zoom <- reactiveValues(x = NULL, y = NULL)
+    
     autoInvalidate <- reactiveTimer(60000, session)
     data_input <- reactive({
         autoInvalidate()
         print("updating data")
         date_range <- date_ranger(input$dates)
+        date_range[2] <- date_range[2] + 3600
         dt <- get_co2_data(date_range)
+        
         list(dt=dt,date_range=date_range, updated_time=with_tz(Sys.time(),tzone))
     })
     output$last_updated <- renderText({
@@ -117,32 +133,74 @@ server <- function(input, output, session) {
                 as.character(d$updated_time))
         )
     })
-    output$distPlot <- renderPlotly({
-        # generate bins based on input$bins from ui.R
-        theme_set(theme_bw() + theme(legend.position = 'none', panel.spacing = unit(.1, "line")))
-        
+    output$overall_view <- renderPlot(execOnResize = FALSE,bg="transparent",{
         d <- data_input()
         device_sensor_map <- unique(d$dt, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id")]
         device_sensor_map[, `:=`(x=d$date_range[1],y=900, CO2_ppm=0)]
+        dd <- data.table(x =d$updated_time , y = +Inf, xend =d$updated_time , yend = 400)
+
         pl <- ggplot(d$dt,  aes(T,CO2_ppm)) +
-            geom_text(data=device_sensor_map, aes(label=device_id, x=x,y=y),colour="blue")+
+            geom_line(aes( group=sensor_id), colour="black", size=.5, alpha=.5) +
+            scale_y_continuous(name=NULL, labels=NULL) +
+            scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone, 
+                             breaks = scales::pretty_breaks(n = 12)) +
+            theme_minimal() + theme(legend.position = 'none', panel.spacing = unit(.5, "line"),
+                  panel.background = element_rect(fill='white', colour='black',
+                                                  size = 0.5, linetype = "solid"),
+                  strip.background =element_rect(fill="grey"),
+                  strip.text = element_text(colour = 'black',size = 12))+
+            geom_segment(data=dd,
+                         aes(x=x,y=y,yend=yend, xend=xend),
+                         colour='blue', size=1,
+                         arrow = arrow(length = unit(0.5, "cm")))
+        
+        # ggplotly(pl,dynamicTicks =FALSE ) %>%
+        # # rangeslider() %>%
+        # layout(legend = list(orientation = "h", x = 0.4, y = 1.1), selectdirection='h')
+        pl
+    })
+    
+    output$zoom_view <- renderPlot(execOnResize = FALSE,bg="transparent", {
+        # generate bins based on input$bins from ui.R
+        # theme_set(c + )
+        
+        d <- data_input()
+        device_sensor_map <- unique(d$dt, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id")]
+        # device_sensor_map[, `:=`(x= ifelse(is.null(range_zoom$x), d$date_range[1],range_zoom$x[1]),
+        #                          y=900, CO2_ppm=0)]
+        if(!is.null(range_zoom$x)){
+            device_sensor_map[, x:=range_zoom$x[1]]
+        }
+        else{
+            device_sensor_map[, x:=d$date_range[1]]
+        }
+        
+        device_sensor_map[, `:=`(ax =d$updated_time , ay = +Inf,  ayend = 400)]
+        
+        pl <- ggplot(d$dt[T %between% range_zoom$x],  aes(T,CO2_ppm)) +
             geom_hline(data=ranges_dt, mapping = aes(yintercept=set), colour="grey", linetype=2)+
-            geom_line(colour="black", size=.5) +
+            geom_line(colour="black", size=.5, alpha=.5) +
             geom_point(mapping=aes(colour=in_range), size=1) +
             facet_grid(sensor_id  ~ .) +
+            geom_label(data=device_sensor_map, aes(label=device_id, x=x), y=-Inf, vjust=-.1, colour="blue",hjust=0)+
             scale_y_continuous(name="[CO2] (PPM)") +
             scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone, 
                              breaks = scales::pretty_breaks(n = 12)) +
-            coord_cartesian(xlim = NULL, ylim = c(250,1000))+
+            coord_cartesian(xlim = range_zoom$x, expand = FALSE)+
             scale_colour_manual(values = c("red", "black")) +
-            theme(axis.text.x = element_text(angle = 45, hjust = 1))
-    
+            theme_minimal() + theme(legend.position = 'none', panel.spacing = unit(.5, "line"),
+                                    panel.background = element_rect(fill='white', colour='black',
+                                                                    size = 0.5, linetype = "solid"),
+                                    strip.background =element_rect(fill="grey"),
+                                    strip.text = element_text(colour = 'black',size = 12))+
+            geom_segment(data=device_sensor_map,
+                         aes(x=ax,y=ay,yend=ayend, xend=ax),
+                         colour='blue', size=.5,
+                         arrow = arrow(length = unit(0.5, "cm")))
         
+            
         
-        
-        ggplotly(pl,dynamicTicks =FALSE ) %>%
-        # rangeslider() %>%
-        layout(legend = list(orientation = "h", x = 0.4, y = 1.1), selectdirection='h')
+        pl
     })
     output$dateText  <- renderText({
         paste("input$date is", as.character(input$dates))
@@ -171,6 +229,18 @@ server <- function(input, output, session) {
             fwrite(data_input()$dt, file, row.names = FALSE)
         }
     )
+    observe({
+        brush <- input$overview_brush
+        if (!is.null(brush)) {
+            range_zoom$y <- c(brush$ymin, brush$ymax)
+            range_zoom$x <- as.POSIXct(c(brush$xmin, brush$xmax), origin='1970-01-01')
+            
+            
+        } else {
+            range_zoom$x <- data_input()$date_range
+            range_zoom$y <- NULL
+        }
+    })
     
 }
 
