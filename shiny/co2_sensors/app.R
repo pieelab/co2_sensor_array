@@ -10,6 +10,9 @@ library(RMariaDB)
 library(Cairo)
 library(R.utils)
 library(shinyWidgets)
+library(dqshiny)
+
+options(shiny.usecairo=T)
 
 tzone = 'America/Vancouver'
 Sys.setenv(TZ=tzone)
@@ -77,9 +80,8 @@ ui <- fluidPage(
     # Application title
     titlePanel("CO2 sensors"),
     sidebarPanel(
-        dateRangeInput("dates", "Date range", start = Sys.Date() - 2, end = Sys.Date(), min = NULL,
-                       max = Sys.Date(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
-                       language = "en", separator = " to ", width = NULL),
+        uiOutput("date_selector")
+            ,
         
        h4(htmlOutput( "last_updated"))
     ),
@@ -91,12 +93,21 @@ ui <- fluidPage(
         tabsetPanel(type = "tabs",
                     tabPanel("Plot",
                              
+                            # imageOutput("zoom_view", 
+                            #                    height="600px",
+                            #                    width='800px', ),
+
                             plotOutput("zoom_view", 
-                                               height="600px",
-                                               width='800px', ),
+                                       height="600px",
+                                       width='100%',
+                                       dblclick = "overview_dblclick",
+                                       brush = brushOpts(
+                                           id = "overview_brush",
+                                           resetOnNew = FALSE, direction='x')),
+                        
                             plotOutput("overall_view", 
-                                       height="100px",
-                                       width='800px',
+                                       height="150px",
+                                       width='100%',
                                        dblclick = "overview_dblclick",
                                        brush = brushOpts(
                                            id = "overview_brush",
@@ -115,12 +126,22 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
     range_zoom <- reactiveValues(x = NULL, y = NULL)
+    today <- reactiveVal()
+    today(Sys.Date())
+    observe({
+        today(Sys.Date())
+    })
+    output$date_selector <-  renderUI({
+        dateRangeInput("dates", "Date range", start = today() - 2, end = today(), min = NULL,
+                       max = today(), format = "yyyy-mm-dd", startview = "month", weekstart = 0,
+                       language = "en", separator = " to ", width = NULL)
+    })
     
     autoInvalidate <- reactiveTimer(60000, session)
     data_input <- reactive({
         autoInvalidate()
-        print("updating data")
         date_range <- date_ranger(input$dates)
+        print(date_range)
         date_range[2] <- date_range[2] + 3600
         dt <- get_co2_data(date_range)
         
@@ -133,6 +154,7 @@ server <- function(input, output, session) {
                 as.character(d$updated_time))
         )
     })
+    
     output$overall_view <- renderPlot(execOnResize = FALSE,bg="transparent",{
         d <- data_input()
         device_sensor_map <- unique(d$dt, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id")]
@@ -141,18 +163,20 @@ server <- function(input, output, session) {
 
         pl <- ggplot(d$dt,  aes(T,CO2_ppm)) +
             geom_line(aes( group=sensor_id), colour="black", size=.5, alpha=.5) +
-            scale_y_continuous(name=NULL, labels=NULL) +
+            scale_y_continuous(name = '[CO2] (ppm)') +
             scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone, 
                              breaks = scales::pretty_breaks(n = 12)) +
             theme_minimal() + theme(legend.position = 'none', panel.spacing = unit(.5, "line"),
                   panel.background = element_rect(fill='white', colour='black',
                                                   size = 0.5, linetype = "solid"),
                   strip.background =element_rect(fill="grey"),
+                  axis.text.x = element_text(angle = 45, hjust = 1),
                   strip.text = element_text(colour = 'black',size = 12))+
             geom_segment(data=dd,
                          aes(x=x,y=y,yend=yend, xend=xend),
                          colour='blue', size=1,
-                         arrow = arrow(length = unit(0.5, "cm")))
+                         arrow = arrow(length = unit(0.5, "cm"))) 
+            
         
         # ggplotly(pl,dynamicTicks =FALSE ) %>%
         # # rangeslider() %>%
@@ -160,13 +184,20 @@ server <- function(input, output, session) {
         pl
     })
     
-    output$zoom_view <- renderPlot(execOnResize = FALSE,bg="transparent", {
-        # generate bins based on input$bins from ui.R
-        # theme_set(c + )
-        
+    # output$zoom_view <-  dq_render_svg( pdf=T, width=800,{
+    output$zoom_view <-  renderPlot(execOnResize = FALSE,bg="transparent",{
+    
         d <- data_input()
-        device_sensor_map <- unique(d$dt, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id")]
+        
+        # print('a')
+        # 
+        # print(d)
+        if(any(is.na(d$date_range)))
+            return(ggplot())
+
+        device_sensor_map <- unique(d$dt,fromLast=TRUE, by=c("sensor_id", "device_id"))[,c("sensor_id", "device_id", "T", "CO2_ppm")]
         # device_sensor_map[, `:=`(x= ifelse(is.null(range_zoom$x), d$date_range[1],range_zoom$x[1]),
+
         #                          y=900, CO2_ppm=0)]
         if(!is.null(range_zoom$x)){
             device_sensor_map[, x:=range_zoom$x[1]]
@@ -175,32 +206,45 @@ server <- function(input, output, session) {
             device_sensor_map[, x:=d$date_range[1]]
         }
         
+        device_sensor_map[, dev_label := sprintf("%s@%s, %d PPM\n%s",sensor_id, device_id,round(CO2_ppm),as.character(T))]
+        
         device_sensor_map[, `:=`(ax =d$updated_time , ay = +Inf,  ayend = 400)]
         
+        
+        print('b')
+        print(d$updated_time)
+        range <- range_zoom$x
+        print(range) 
         pl <- ggplot(d$dt[T %between% range_zoom$x],  aes(T,CO2_ppm)) +
             geom_hline(data=ranges_dt, mapping = aes(yintercept=set), colour="grey", linetype=2)+
             geom_line(colour="black", size=.5, alpha=.5) +
             geom_point(mapping=aes(colour=in_range), size=1) +
             facet_grid(sensor_id  ~ .) +
-            geom_label(data=device_sensor_map, aes(label=device_id, x=x), y=-Inf, vjust=-.1, colour="blue",hjust=0)+
+            geom_label(data=device_sensor_map, aes(label= dev_label, x=x), y=-Inf, vjust=-.1, colour="blue",hjust=0, alpha=.67)+
             scale_y_continuous(name="[CO2] (PPM)") +
             scale_x_datetime(name="", limits = with_tz(d$date_range, tzone), timezone = tzone, 
-                             breaks = scales::pretty_breaks(n = 12)) +
-            coord_cartesian(xlim = range_zoom$x, expand = FALSE)+
+                             breaks = scales::pretty_breaks(n = 12)) 
+        
+        pl <- pl +
+            coord_cartesian(xlim = range, expand = FALSE)+
             scale_colour_manual(values = c("red", "black")) +
             theme_minimal() + theme(legend.position = 'none', panel.spacing = unit(.5, "line"),
                                     panel.background = element_rect(fill='white', colour='black',
                                                                     size = 0.5, linetype = "solid"),
                                     strip.background =element_rect(fill="grey"),
-                                    strip.text = element_text(colour = 'black',size = 12))+
+                                    strip.text = element_text(colour = 'black',size = 12))
+            pl <- pl +
             geom_segment(data=device_sensor_map,
                          aes(x=ax,y=ay,yend=ayend, xend=ax),
                          colour='blue', size=.5,
                          arrow = arrow(length = unit(0.5, "cm")))
         
+            # pl <- pl +  geom_label(data=device_sensor_map, aes(label=last_point_label, T + 300), y=-Inf, vjust=-.1, colour="black",hjust=0)    
+            pl
+        
             
         
-        pl
+       
     })
     output$dateText  <- renderText({
         paste("input$date is", as.character(input$dates))
